@@ -3,44 +3,11 @@ package tutorial.webapp
 
 import scala.scalajs.js.JSApp
 import org.scalajs.dom.document
-import Diagram._
+import tutorial.model.{Trade, TradeSearchService}
 
 object TutorialApp extends JSApp {
   def main(): Unit = {
-    val diag = PieDiagram(
-      r = 20, rr = 40,
-      sectors = Seq(
-      PieSector(1, "green", Some("1N")),
-      PieSector(1.2, "yellow", Some("Le")),
-      PieSector(1.1, "blue", Some("3A")),
-      PieSector(2, "red", Some("4R")),
-      PieSector(1, "gray", None),
-      PieSector(1.7, "orange", None)
-    ))
-
-    val r = PieDiagram(
-      r = 40, rr = 80,
-      sectors = Seq(
-        PieSector(1, "green", None),
-        PieSector(1, "gray", None)
-      ))
-
-    val star = Tree(node = diag, leaves = Seq(
-      Tree(node = diag),
-      Tree(node = diag),
-      Tree(node = diag),
-      Tree(node = diag),
-      Tree(node = diag),
-      Tree(node = diag),
-      Tree(node = diag)
-    ))
-
-    val t = Tree(node = r, leaves =
-      (1 to 10 map (_ => Tree(node = diag))) ++
-        (1 to 3 map (_ => star))
-    )
-
-    val pt = position(t)
+    val pt = position(renderTrades(TradeSearchService.find("as")))
     val bnds: Bounds = bounds(pt)
 
     val maxWidth = 1280
@@ -52,7 +19,6 @@ object TutorialApp extends JSApp {
       scl = Some(maxWidth / w)
       h = h * scl.get
     }
-    implicit val treePie = new TreeDomRepr[PieDiagram]
 
     val svgFrag = {
       import scalatags.JsDom
@@ -71,5 +37,26 @@ object TutorialApp extends JSApp {
 
     document.body.appendChild(svgFrag)
   }
+
+  def renderTrades(trades: Seq[Trade]): Tree[Option[PieDiagram]] = {
+    val groups = trades.groupBy(t => (t.tid, t.mid)).mapValues(s =>
+        Some(PieDiagram(r = 20, rr = 40, sectors = s map toPieSector))
+    )
+    val tids = groups.keySet.map(_._1)
+    val (roots, leaves) = groups.partition {
+      case (((_, None), _)) => true
+      case (((tid, Some(mid)), _)) => !tids.contains(mid) || mid == tid // dangling pointer
+    }
+    def walkTree(tid: String, nodes: Map[(String, Option[String]), Option[PieDiagram]]): Seq[Tree[Option[PieDiagram]]] = {
+      val (lf, other) = nodes.partition {
+        case (((_, Some(mid)), _)) => tid == mid
+      }
+      (for (((tid, _), pd) <- lf) yield Tree(pd, walkTree(tid, other))).toSeq
+    }
+    val res = (for (((tid, _), pd) <- roots) yield Tree(pd, walkTree(tid, leaves))).toSeq
+    if (res.size == 1) res.head else Tree(None, res)
+  }
+
+  def toPieSector(trade: Trade): PieSector = PieSector(1d, "green", Option(s"${trade.v}"))
 
 }

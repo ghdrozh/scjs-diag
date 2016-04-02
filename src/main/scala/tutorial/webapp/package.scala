@@ -11,8 +11,31 @@ package object webapp {
     def bounds(a: A): Bounds
   }
 
+  object Spatial {
+    implicit def spatialOption[A](implicit spatialA: Spatial[A]): Spatial[Option[A]] = new Spatial[Option[A]]() {
+      override def size(opt: Option[A]): Size = opt match {
+        case None => 0d
+        case Some(a) => spatialA.size(a)
+      }
+
+      override def bounds(opt: Option[A]): Bounds = opt match {
+        case None => Bounds(0d,0d,0d,0d)
+        case Some(a) => spatialA.bounds(a)
+      }
+    }
+  }
+
   trait DomRepr[A] {
     def render(a: A): Node
+  }
+
+  object DomRepr {
+    implicit def domReprOption[A](implicit domReprA: DomRepr[A]): DomRepr[Option[A]] = new DomRepr[Option[A]] {
+      override def render(opt: Option[A]): Node = opt match {
+        case None => scalatags.JsDom.svgTags.circle().render
+        case Some(a) => domReprA.render(a)
+      }
+    }
   }
 
   case class Bounds(minHeight: Double, maxHeight: Double, minWidth: Double, maxWidth: Double) {

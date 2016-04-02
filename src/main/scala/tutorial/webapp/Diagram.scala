@@ -12,7 +12,7 @@ case class PieDiagram(r: Double = 40, rr: Double = 80, gap: Double = 0.05, secto
 
 object Diagram {
 
-  class TreeDomRepr[A: DomRepr] extends DomRepr[Tree[(Point, Double, A)]] {
+  implicit def treeDomRepr[A](implicit domReprA: DomRepr[A]) = new DomRepr[Tree[(Point, Double, A)]]() {
     override def render(t: Tree[(Point, Double, A)]): Node = {
       import JsDom.short._
       import JsDom.svgAttrs._
