@@ -1,12 +1,13 @@
 package tutorial.webapp
 
 import org.scalajs.dom.{Event, Node}
+
 import scala.language.postfixOps
 import scalatags.JsDom
-
+import rx.{Ctx, Var}
 
 sealed trait Diagram
-case class PieSector(weight: Double, color: String, label: Option[String]) extends Diagram
+case class PieSector(weight: Double, color: String, label: Option[String], selected: Var[Boolean]) extends Diagram
 case class PieDiagram(r: Double = 40, rr: Double = 80, gap: Double = 0.05, sectors: Seq[PieSector]) extends Diagram
 
 
@@ -27,7 +28,7 @@ object Diagram {
         ),
           g(transform := s"translate($px, $py)") (
             leaves.map(go(Some(p), _)),
-            implicitly[DomRepr[A]].render(node)
+            domReprA.render(node)
           )
         )
       }
@@ -40,7 +41,7 @@ object Diagram {
     override def bounds(a: PieDiagram): Bounds = Bounds.square(a.rr)
   }
 
-  implicit object pieDiagramDom extends DomRepr[PieDiagram] {
+  implicit def pieDiagramDom(implicit ctxOwner: Ctx.Owner) = new DomRepr[PieDiagram] {
     import JsDom.short._
     import JsDom.svgAttrs._
     import JsDom.svgTags._
@@ -48,41 +49,42 @@ object Diagram {
     override def render(diagram: PieDiagram) = {
 
       import JsDom.all.{SeqFrag, OptionNode, _}
-      import JsDom.svgAttrs
 
       val PieDiagram(r, rr, gap, sectors) = diagram
       val weights = sectors.map(_.weight)
       val wsum = weights.sum
       val arcs = weights.map(_ / wsum * 2 * Math.PI).scanLeft(0.0)(_ + _).map(_ - Math.PI / 2)
 
-      def toggleSelection(ps: PieSector, p: Point) = {
-        var selected = false
-        (event: Event) => {
-          selected = !selected
-          val trg = event.currentTarget.asInstanceOf[org.scalajs.dom.raw.SVGElement]
-          if (selected) trg.setAttribute("transform", s"translate(${p.x} ${p.y})")
-          else trg.removeAttribute("transform")
+      def renderSector(ps: PieSector, alpha: Double, beta: Double): Frag = {
+        import JsDom.all.{SeqFrag, OptionNode, _}
+        import JsDom.svgAttrs
+        val R = rr * 0.1
+        val gamma: Double = (alpha + beta) / 2
+        val (dx, dy) = (R * math.cos(gamma), R * math.sin(gamma))
+        def clickF(event: Event): Unit = {
+          ps.selected() = !ps.selected.now
         }
+        val elem = g(
+          arc(
+            r, rr,
+            alpha + gap,
+            beta - gap,
+            svgAttrs.fill := ps.color),
+          ps.label.map(svgLabel(r, rr, gamma, _))
+        )(
+          cursor := "pointer",
+          onclick := clickF _
+        ).render
+        ps.selected.triggerLater {
+          if (ps.selected.now) elem.setAttribute("transform", s"translate($dx $dy)")
+          else elem.removeAttribute("transform")
+        }
+        elem
       }
 
       (for (
         ((alpha, beta), ps) <- arcs zip arcs.tail zip sectors
-      ) yield {
-          val R = rr * 0.1
-          val gamma: Double = (alpha + beta) / 2
-          g(
-            arc(
-              r, rr,
-              alpha + gap,
-              beta - gap,
-              svgAttrs.fill := ps.color),
-            ps.label.map(svgLabel(r, rr, gamma, _))
-          )(
-            cursor := "pointer",
-            onclick := toggleSelection(ps, Point(R * math.cos(gamma), R * math.sin(gamma)))
-          )
-        }
-        ).render
+      ) yield renderSector(ps, alpha, beta)).render
     }
 
     def arc(r0: Double, r1: Double, alpha: Double, beta: Double, xs: JsDom.Modifier*) = {

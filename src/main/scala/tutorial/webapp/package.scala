@@ -1,6 +1,15 @@
 package tutorial
 
-import org.scalajs.dom.Node
+import scala.language.implicitConversions
+
+import scalajs.js
+import org.scalajs.dom
+import dom.Node
+
+import scalatags.JsDom.all._
+import rx._
+
+
 
 package object webapp {
 
@@ -88,6 +97,18 @@ package object webapp {
     val lb: Option[Bounds] = leaves.map(bounds(_)(spatial)).reduceOption(_ + _).map(_.shift(p))
     val slf = spatial.bounds(a).shift(p)
     if (lb.isDefined) slf + lb.get else slf
+  }
+
+  implicit def rxFrag[T <% Frag](r: Rx[T])(implicit ownerCtx: Ctx.Owner): Frag = {
+    def rSafe: dom.Node = r.now.render
+    var last = rSafe
+    r.triggerLater {
+      val newLast = rSafe
+      js.Dynamic.global.last = last
+      last.parentNode.replaceChild(newLast, last)
+      last = newLast
+    }
+    last
   }
 
 }
