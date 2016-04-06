@@ -1,0 +1,30 @@
+.pie-sect {
+    fill: grey
+}
+
+.pie-sect-finished {
+    fill: #28CC11;
+}
+
+.pie-sect-processing {
+    fill: yellow;
+}
+
+.pie-sect-failed {
+    fill: red;
+}
+
+.pie-sect-discarded {
+    fill: grey;
+}
+
+.pie-sect-captured {
+    stroke: #28CC11;
+    fill: none;
+}
+
+.pie-center {
+    stroke: #28CC11;
+    stroke-width: 5;
+    fill: white;
+}

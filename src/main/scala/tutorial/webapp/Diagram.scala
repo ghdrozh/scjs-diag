@@ -6,8 +6,13 @@ import scala.language.postfixOps
 import scalatags.JsDom
 import rx.{Ctx, Var}
 
+import scala.collection.immutable.::
+import scalatags.JsDom.svgAttrs
+
 sealed trait Diagram
-case class PieSector(weight: Double, color: String, label: Option[String], selected: Var[Boolean]) extends Diagram
+
+case class PieSector(weight: Double, cssClass: String, label: Option[String], selected: Var[Boolean]) extends Diagram
+
 case class PieDiagram(r: Double = 40, rr: Double = 80, gap: Double = 0.05, sectors: Seq[PieSector]) extends Diagram
 
 
@@ -26,7 +31,7 @@ object Diagram {
           x1 := 0, y1 := 0, x2 := px, y2 := py,
           stroke := "black", strokeWidth := 2)
         ),
-          g(transform := s"translate($px, $py)") (
+          g(transform := s"translate($px, $py)")(
             leaves.map(go(Some(p), _)),
             domReprA.render(node)
           )
@@ -37,15 +42,20 @@ object Diagram {
   }
 
   implicit object SpatialPieD extends Spatial[PieDiagram] {
-    override def size(a: PieDiagram): Size = a.rr
-    override def bounds(a: PieDiagram): Bounds = Bounds.square(a.rr)
+    val factor = 1.2
+
+    override def size(a: PieDiagram): Size = a.rr * factor
+
+    override def bounds(a: PieDiagram): Bounds = Bounds.square(a.rr * factor)
   }
 
   implicit def pieDiagramDom(implicit ctxOwner: Ctx.Owner) = new DomRepr[PieDiagram] {
+
     import JsDom.short._
     import JsDom.svgAttrs._
     import JsDom.svgTags._
     import JsDom.all.SeqNode
+
     override def render(diagram: PieDiagram) = {
 
       import JsDom.all.{SeqFrag, OptionNode, _}
@@ -69,7 +79,7 @@ object Diagram {
             r, rr,
             alpha + gap,
             beta - gap,
-            svgAttrs.fill := ps.color),
+            svgAttrs.`class` := s"pie-sect ${ps.cssClass}"),
           ps.label.map(svgLabel(r, rr, gamma, _))
         )(
           cursor := "pointer",
@@ -81,10 +91,21 @@ object Diagram {
         }
         elem
       }
-
-      (for (
-        ((alpha, beta), ps) <- arcs zip arcs.tail zip sectors
-      ) yield renderSector(ps, alpha, beta)).render
+      def renderCenter: Frag = {
+        def clickF(event: Event): Unit = {
+          val doSelect = sectors.forall(ps => !ps.selected.now)
+          sectors.foreach(ps => ps.selected() = doSelect)
+        }
+        circle(cx := 0, cy := 0, svgAttrs.r := r * 0.9,
+          `class` := "pie-center",
+          cursor := "pointer",
+          onclick := clickF _
+        )
+      }
+      (Seq(renderCenter) ++
+        (for (((alpha, beta), ps) <- arcs zip arcs.tail zip sectors)
+          yield renderSector(ps, alpha, beta))
+        ).render
     }
 
     def arc(r0: Double, r1: Double, alpha: Double, beta: Double, xs: JsDom.Modifier*) = {
@@ -109,7 +130,7 @@ object Diagram {
 
     def svgLabel(r0: Double, r1: Double, alpha: Double, label: String) = {
       val Point(px, py) = Point((r0 + r1) / 2, 0).rotate(alpha)
-      val fontSz = (r1 -r0) / 2
+      val fontSz = (r1 - r0) / 2
       text(x := px, y := py,
         textAnchor := "middle",
         fontSize := fontSz,

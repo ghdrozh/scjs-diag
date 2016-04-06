@@ -16,13 +16,13 @@ object TutorialApp extends JSApp {
     val pt = position(diagramOfTrades(trades))
     val bnds: Bounds = bounds(pt)
 
-    val maxWidth = 1280
+    val maxWidth = 700.0
     var w = bnds.maxWidth - bnds.minWidth
     var h = bnds.maxHeight - bnds.minHeight
     var scl: Option[Double] = None
     if (w > maxWidth) {
-      w = maxWidth
       scl = Some(maxWidth / w)
+      w = maxWidth
       h = h * scl.get
     }
 
@@ -34,8 +34,9 @@ object TutorialApp extends JSApp {
 
       svg(height := s"$h", width := s"$w", border := "1px solid")(
         g(
-          transform := s"translate(${-bnds.minWidth}, ${-bnds.minHeight})",
-          scl.map(s => transform := s"scale($s)"),
+          transform := scl.map(s => s" scale($s)").getOrElse("") +
+            s" translate(${-bnds.minWidth}, ${-bnds.minHeight})"
+          ,
           renderDom(pt)
         )
       ).render
@@ -52,7 +53,7 @@ object TutorialApp extends JSApp {
           if (t.selected())
             tr(
               Seq(
-                td(t.trade.transcationType.toString),
+                td(t.trade.transactionType.toString),
                 td(t.trade.status.toString),
                 td(t.trade.tid),
                 td(t.trade.v),
@@ -90,14 +91,17 @@ object TutorialApp extends JSApp {
   }
 
   def diagramOfTrades(trades: Seq[TradeCtx]): Tree[Option[PieDiagram]] = {
-    def toPieSector(t: TradeCtx): PieSector = PieSector(1d, "green", Option(s"${t.trade.v}"), t.selected)
-    val groups = trades.groupBy(t => (t.trade.tid, t.trade.mid)).mapValues(s =>
-        Some(PieDiagram(r = 20, rr = 40, sectors = s map toPieSector))
+
+    val groups = trades.groupBy { t => t.trade.mid match {
+      case Some(m) if m == t.trade.tid => (t.trade.tid, None)
+      case _ => (t.trade.tid, t.trade.mid)
+    }}.mapValues(s =>
+        Some(PieDiagram(r = 60, rr = 100, sectors = s map toPieSector))
     )
     val tids = groups.keySet.map(_._1)
     val (roots, leaves) = groups.partition {
       case (((_, None), _)) => true
-      case (((tid, Some(mid)), _)) => !tids.contains(mid) || mid == tid // dangling pointer
+      case (((tid, Some(mid)), _)) => !tids.contains(mid) // dangling pointer
     }
     def buildTree(tid: String, nodes: Map[(String, Option[String]), Option[PieDiagram]]): Seq[Tree[Option[PieDiagram]]] = {
       val (lf, other) = nodes.partition {
@@ -107,6 +111,15 @@ object TutorialApp extends JSApp {
     }
     val res = (for (((tid, _), pd) <- roots) yield Tree(pd, buildTree(tid, leaves))).toSeq
     if (res.size == 1) res.head else Tree(None, res)
+  }
+
+  def toPieSector(t: TradeCtx) = {
+    PieSector(
+      weight = 1d,
+      cssClass = s"pie-sect-${t.trade.status.toLowerCase}",
+      label = Option(s"${t.trade.v}${t.trade.transactionType.take(1).toUpperCase}"),
+      selected = t.selected
+    )
   }
 
   case class TradeCtx(trade: Trade, selected: Var[Boolean] = Var(false))
